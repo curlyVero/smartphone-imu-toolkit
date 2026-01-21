@@ -1,219 +1,189 @@
-# Smartphone IMU Small Tools (MATLAB + Python)
+# Smartphone IMU Toolkit (MATLAB + Python batch)
 
-A small collection of utilities for **smartphone IMU (Android UncalAccel/UncalGyro)** logs in vehicle scenarios.
+A lightweight toolkit for **smartphone IMU preprocessing and analysis**.  
+This repository provides:
 
-This repo provides:
-- MATLAB scripts for interactive inspection and single-file analysis
-- Python scripts for large-scale batch processing
+- **MATLAB tools** for interactive preprocessing, plotting, noise analysis, mounting-angle analysis, and KML generation.
+- **Python batch scripts** that replicate the core logic of selected MATLAB tools for large-scale processing.
 
-Features:
-- merge raw accelerometer/gyroscope logs into a unified *Uncal-style* CSV
-- visualize sampling instants and rate statistics
-- interpolate to a uniform time grid and run **causal (pseudo real-time) preprocessing**
-- estimate **IMU noise metrics** using overlapping Allan deviation
-- estimate **mounting angles** (roll/pitch/yaw) for vehicle-mounted smartphones
-- export a trajectory to **KML** for Google Earth
+> **Equivalence**
+> - `estimate_mounting_batch.py` implements the same mounting-angle analysis workflow as `mounting_Analysis.m`.
+> - `process_imu.py` implements the same IMU preprocessing workflow as `process_ori_imu.m`.
 
-## Folder structure
+---
 
-Two folder conventions are supported.
+## Contents
 
-### MATLAB workflow folders
+### MATLAB tools (interactive / analysis)
+- `make_imuData.m`  
+  Convert raw IMU logs into a consistent MATLAB-friendly format.
+- `plot_imu_from_Uncal.m`  
+  Plot IMU signals from *UncalAccel/UncalGyro* style logs.
+- `plot_imu_timeline.m`  
+  Plot IMU time series with a timeline layout for quick inspection.
+- `process_ori_imu.m`  
+  IMU preprocessing (e.g., basic cleaning, reformatting, time handling, and preparation for subsequent analysis).
+- `imu_noise_analysis.m`  
+  IMU noise analysis utilities (e.g., static segment statistics / Allan-style analysis depending on implementation).
+- `mounting_Analysis.m`  
+  Mounting-angle analysis (roll/pitch/yaw estimation from driving segments, correlation-based selection, etc.).
+- `main_generate_kml.m`, `LineKml.m`  
+  Export trajectories / segments to KML for visualization in Google Earth.
 
-Created automatically by `process_ori_imu.m`:
+### Python tools (batch processing)
+- `process_imu.py`  
+  Batch preprocessing for many IMU files (same logic as `process_ori_imu.m`).
+- `estimate_mounting_batch.py`  
+  Batch mounting-angle estimation (same logic as `mounting_Analysis.m`).
 
-- `imu_old/`  
-  Input folder. Place your original IMU CSV files here (Android Uncal format).
+---
 
-- `imu/`  
-  Output folder. Interpolated “raw” IMU (uniform time grid).
+## Repository structure (suggested)
 
-- `imu_preprocess/`  
-  Output folder. Causally preprocessed IMU (vehicle-oriented denoising).
-
-### Python workflow folders
-
-Used by `process_imu.py` (created automatically if missing):
-
-- `imu_ori/`
-  Input folder. Expected layout: `imu_ori/YYYY/DOY/*.IMU` (e.g., `2021/136/*.21IMU`).
-
-- `imu_align/`
-  Output folder. Interpolated “raw” IMU on a uniform time grid.
-
-- `imu_prepro/`
-  Output folder. Causally preprocessed IMU.
-
-## Data formats
-
-### 1) Uncal IMU CSV (Android style)
-
-Expected columns:
-
-```
-MessageType,utcTimeMillis,MeasurementX,MeasurementY,MeasurementZ,BiasX,BiasY,BiasZ
-```
-
-- `MessageType`: `UncalAccel` or `UncalGyro`
-- `utcTimeMillis`: UTC milliseconds (Unix epoch)
-- `Measurement*`: accelerometer (m/s^2) or gyroscope (rad/s)
-- `Bias*`: optional, can be zeros
-
-`make_imuData.m` writes this format.
-
-### 2) Interpolated IMU (written by `process_ori_imu.m`)
-
-Columns:
-
-```
-t_ms, AccX, AccY, AccZ, GyroX, GyroY, GyroZ
+```text
+.
+├─ matlab/
+│  ├─ make_imuData.m
+│  ├─ plot_imu_from_Uncal.m
+│  ├─ plot_imu_timeline.m
+│  ├─ process_ori_imu.m
+│  ├─ imu_noise_analysis.m
+│  ├─ mounting_Analysis.m
+│  ├─ main_generate_kml.m
+│  └─ LineKml.m
+├─ python/
+│  ├─ process_imu.py
+│  └─ estimate_mounting_batch.py
+└─ README.md
 ```
 
-## Quick start
+> If your repo currently places all scripts in the root directory, you can still use this README as-is.
+> The folder layout above is recommended but not mandatory.
 
-### A. Merge separated ACC/GYR logs into Uncal CSV
+---
 
-If you have two separate files (accelerometer and gyroscope) in a simple numeric format:
+## Requirements
 
-```matlab
-make_imuData('acc.txt', 'gyr.txt', 'imuData.csv');
-plot_imu_from_Uncal('imuData.csv');
-```
+### MATLAB
+- MATLAB R2018a+ is usually sufficient for most scripts.
+- Toolboxes are generally not required unless your implementation calls specific toolbox functions.
 
-### B. Batch interpolate and preprocess all files under `imu_old/`
+### Python (batch scripts)
+- Python 3.8+
+- Typical dependencies (depending on your script implementation):
+  - `numpy`
+  - `pandas`
+  - `scipy` (only if optimization / filtering is used)
 
-1) Put your Uncal CSV files into `./imu_old/`.
-
-2) Run:
-
-```matlab
-process_ori_imu();          % default 50 Hz, no plots
-process_ori_imu(50, true);  % 50 Hz, plot comparisons per file
-```
-
-Outputs will be written to:
-- `./imu/` (interpolated raw)
-- `./imu_preprocess/` (causal preprocessed)
-
-### B2. Batch interpolate and preprocess with Python
-
-Install Python dependencies:
-
+Install dependencies (recommended):
 ```bash
-pip install numpy pandas
+pip install -r requirements.txt
 ```
 
-Run batch processing (default expects `./imu_ori/YYYY/DOY/*.IMU`):
-
-```bash
-python process_imu.py --base_dir . --target_freq 50
-```
-
-Outputs will be written to:
-- `./imu_align/YYYY/DOY/`
-- `./imu_prepro/YYYY/DOY/`
-
-Statistics and logs:
-- `./imu_stats_detail.csv`
-- `./imu_stats_summary.csv`
-- `./imu_process.log`
-
-### C. IMU noise analysis (Allan deviation)
-
-Run Allan deviation on an interpolated/preprocessed file:
-
-```matlab
-out = imu_noise_analysis('imu_preprocess/example.20IMU', 'Delimiter', ',', 'MakePlot', true);
-disp(out);
-```
-
-### D. Mounting angle estimation (vehicle scenario)
-
-```matlab
-result = mounting_Analysis('imu_preprocess/example.20IMU', 'Plot', true);
-disp(result);
-```
-
-The returned angles are in degrees:
-- `result.roll_deg`
-- `result.pitch_deg`
-- `result.yaw_deg`
-
-### D2. Batch mounting angle estimation with Python
-
-Install Python dependencies:
-
+If you do not have `requirements.txt`, you can install the basics:
 ```bash
 pip install numpy pandas scipy
 ```
 
-By default, the script searches `./imu_prepro` recursively and writes
-`mounting_summary.csv`:
+---
 
-```bash
-python estimate_mounting_batch.py
-```
+## Quick start
 
-If your preprocessed folder is different, update the `DATA_ROOT` constant at the
-top of `estimate_mounting_batch.py`.
-
-### E. Generate a KML trajectory
-
-If your navigation/trajectory output file contains a header line with `GPSTime`, `Latitude`, and `Longitude` and then numeric lines:
+### 1) MATLAB: run a single file workflow
+Open MATLAB, add the repo (or `matlab/`) to your path:
 
 ```matlab
-main_generate_kml('solution.txt', 'trajectory.kml', 'GNSS_INS_Trajectory');
+addpath(genpath(pwd));
 ```
 
-Open the resulting `.kml` in Google Earth.
+Typical workflows:
 
-## Scripts overview
+**(A) Preprocess one IMU file**
+```matlab
+process_ori_imu('path/to/input_imu_file', 'path/to/output_dir');
+```
 
-- `make_imuData.m`  
-  Merge separate ACC/GYR logs into an Android-style Uncal CSV.
+**(B) Mounting-angle analysis**
+```matlab
+mounting_Analysis('path/to/preprocessed_imu_file_or_dir');
+```
 
-- `plot_imu_from_Uncal.m`  
-  Inspect ACC/GYR sampling instants and basic rate statistics.
+**(C) Noise analysis**
+```matlab
+imu_noise_analysis('path/to/preprocessed_or_static_data');
+```
 
-- `plot_imu_timeline.m`  
-  Core plotting function used by `plot_imu_from_Uncal.m`.
+> The exact function signatures may differ depending on your implementation.
+> Please check the header comments at the top of each `.m` file for the authoritative usage.
 
-- `process_ori_imu.m`  
-  Batch interpolation to a uniform time grid + causal preprocessing for vehicle IMU.
+---
 
-- `imu_noise_analysis.m`  
-  Overlapping Allan deviation + VRW/ARW/bias-instability reporting.
+### 2) Python: batch processing (recommended for many files)
 
-- `mounting_Analysis.m`  
-  Roll/pitch from static leveling + yaw from correlation (grid search).
+#### (A) Batch IMU preprocessing — `process_imu.py`
+This script is designed for processing **many files/folders** in one run.  
+It follows the same preprocessing logic as `process_ori_imu.m`, but runs in batch mode.
 
-- `main_generate_kml.m`, `LineKml.m`  
-  Export trajectory to KML (LineString).
+Example:
+```bash
+python python/process_imu.py --input ./imu_ori --output ./imu_prepro
+```
 
-- `process_imu.py` (Python)
-  Batch interpolation to a uniform time grid + causal preprocessing.
+Common options (example, adjust to your script):
+- `--input`: root directory of raw IMU files
+- `--output`: output directory for preprocessed files
+- `--pattern`: optional glob pattern for file matching
+- `--recursive`: process recursively
 
-- `estimate_mounting_batch.py` (Python)
-  Batch mounting-angle estimation with correlation + straight-line fallback.
+#### (B) Batch mounting estimation — `estimate_mounting_batch.py`
+This script is the batch version of `mounting_Analysis.m`.
 
-## Requirements
+Example:
+```bash
+python python/estimate_mounting_batch.py
+```
 
-- MATLAB R2018b or later recommended.
-- `detectImportOptions`, `readtable` are used for robust parsing.
-- Optimization in `mounting_Analysis.m` uses `fminsearch` (built-in).
+By default, it typically uses a configuration block inside the script, for example:
+- `DATA_ROOT = './imu_prepro'`
+- `OUTPUT_FILE = 'mounting_summary.csv'`
 
-Python requirements:
-- Python 3.8+ recommended
-- `numpy`, `pandas` for `process_imu.py`
-- `numpy`, `pandas`, `scipy` for `estimate_mounting_batch.py`
+After running, you should obtain a CSV summary such as:
+- `mounting_summary.csv`
 
-## Notes on units
+> Please check the header section in `estimate_mounting_batch.py` for the exact configuration keys and outputs.
 
-- Accelerometer: **m/s^2**
-- Gyroscope: **rad/s**  
-  (`imu_noise_analysis.m` reports ARW in deg/sqrt(h) and bias instability in deg/h.)
+---
 
-## License
+## Input data conventions (recommended)
 
-Choose a license before publishing (e.g., MIT, BSD-3-Clause, Apache-2.0).
+Because smartphone IMU logs vary across vendors/apps, this toolkit assumes you have (or can convert to) consistent columns such as:
 
+- timestamp (sec)
+- accelerometer (m/s²)
+- gyroscope (rad/s)
+
+If your raw logs are Android Sensor logs (e.g., UncalAccel/UncalGyro), use:
+- `make_imuData.m` / `plot_imu_from_Uncal.m` to convert and verify,
+then run preprocessing and analysis.
+
+> **Tip:** Always confirm **units** before analysis.  
+> Mixing `g` and `m/s²`, or `deg/s` and `rad/s`, will lead to incorrect estimates.
+
+---
+
+## Outputs
+
+Depending on which tool you run, outputs may include:
+- preprocessed IMU files (cleaned / reformatted)
+- diagnostic plots (time series, segments, etc.)
+- mounting-angle summary CSV (batch mode)
+- KML files for trajectory visualization
+
+---
+
+
+---
+
+## Contact / Issues
+
+If you have any Questions or Comments, Please contact lwlLiu@wdu.edu.cn, Thanks!
