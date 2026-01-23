@@ -40,8 +40,6 @@
 %     n_static, n_total, dt, fs
 %
 % NOTES:
-%   - If Aerospace Toolbox is unavailable, a lightweight XYZ Euler-to-DCM
-%     implementation is used internally.
 %
 % =========================================================================
 function result = mounting_Analysis(imuFile, varargin)
@@ -119,7 +117,7 @@ function result = mounting_Analysis(imuFile, varargin)
     S = [1, 0, 0; 0, 1, 0];
 
     cost_func_rp = @(x) norm( ...
-        S * (angle2dcm_xyz(x(1), -x(2), 0) * static_mean') - target_xy ...
+        S * (angle2dcm(x(1), -x(2), 0, 'XYZ') * static_mean') - target_xy ...
         )^2;
 
     phi_init   = atan2(static_mean(2), -static_mean(3));
@@ -137,7 +135,7 @@ function result = mounting_Analysis(imuFile, varargin)
     fprintf('  Roll  : %.4f deg\n', rad2deg(best_roll));
     fprintf('  Pitch : %.4f deg\n', rad2deg(best_pitch));
 
-    R_level = angle2dcm_xyz(best_roll, -best_pitch, 0);
+    R_level = angle2dcm(best_roll, -best_pitch, 0, 'XYZ');
 
     % ---- phase 2: yaw from correlation between lateral acc and yaw rate ----
     acc_level  = (R_level * acc_b')';
@@ -165,7 +163,7 @@ function result = mounting_Analysis(imuFile, varargin)
         % Rotate leveled acceleration around Z (heading)
         lat_acc_test = -valid_dyn(:, 1) * sin(psi) + valid_dyn(:, 2) * cos(psi);
 
-        if std(lat_acc_test) > 1e-6 && std(valid_rate) > 1e-6
+        if std(lat_acc_test) > 1e-6
             c = corrcoef(lat_acc_test, valid_rate);
             corrs(i) = c(1, 2);
         else
@@ -195,7 +193,7 @@ function result = mounting_Analysis(imuFile, varargin)
 
     % ---- diagnostics plot ----
     if doPlot
-        R_final = angle2dcm_xyz(best_roll, -best_pitch, deg2rad(best_yaw));
+        R_final = angle2dcm(best_roll, best_pitch, deg2rad(best_yaw), 'XYZ');
         acc_frd = (R_final * acc_b')';
         acc_frd_dyn = acc_frd - [0, 0, -GRAVITY_MAG];
 
@@ -264,18 +262,3 @@ function result = mounting_Analysis(imuFile, varargin)
     end
 end
 
-% ---- local helper: XYZ Euler angles to DCM ----
-function R = angle2dcm_xyz(phi, theta, psi)
-% angle2dcm_xyz - Minimal replacement for angle2dcm(phi,theta,psi,'XYZ').
-%
-% Rotation order: X then Y then Z.
-    cx = cos(phi);  sx = sin(phi);
-    cy = cos(theta); sy = sin(theta);
-    cz = cos(psi);  sz = sin(psi);
-
-    Rx = [1 0 0; 0 cx -sx; 0 sx cx];
-    Ry = [cy 0 sy; 0 1 0; -sy 0 cy];
-    Rz = [cz -sz 0; sz cz 0; 0 0 1];
-
-    R = Rx * Ry * Rz;
-end

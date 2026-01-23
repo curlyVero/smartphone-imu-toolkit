@@ -57,7 +57,7 @@ function make_imuData(accFile, gyrFile, outFile)
     print_rate("GYR", rate_gyr);
 
     % ===== Plot timeline =====
-    plot_imu_timeline(accUtcMs, gyrUtcMs, rate_acc, rate_gyr);
+    % plot_imu_timeline(accUtcMs, gyrUtcMs, rate_acc, rate_gyr);
 
     % ===== Pack output rows =====
     accRows = pack_rows("UncalAccel", acc, accUtcMs);
@@ -66,9 +66,16 @@ function make_imuData(accFile, gyrFile, outFile)
     allRows = [accRows; gyrRows];
     allRows = sortrows(allRows, "utcTimeMillis");
 
-    % ===== Write CSV =====
+     % ===== Write CSV =====
     fid = fopen(outFile, 'w');
     assert(fid > 0, "Cannot open output file: %s", outFile);
+    N = height(allRows);
+    fprintf('[%s] Writing CSV (%d rows) to %s ...\n', mfilename, N, outFile);
+    % Print progress every 2 seconds
+    printIntervalSec = 2;
+    lastPrint = tic;
+
+    tWrite = tic;
 
     fprintf(fid, 'MessageType,utcTimeMillis,MeasurementX,MeasurementY,MeasurementZ,BiasX,BiasY,BiasZ\n');
     for i = 1:height(allRows)
@@ -77,10 +84,18 @@ function make_imuData(accFile, gyrFile, outFile)
             allRows.utcTimeMillis(i), ...
             allRows.MeasurementX(i), allRows.MeasurementY(i), allRows.MeasurementZ(i), ...
             allRows.BiasX(i), allRows.BiasY(i), allRows.BiasZ(i));
+        % ----- Progress printing (every 2 seconds) -----
+        if toc(lastPrint) >= printIntervalSec
+            pct = (double(i) / double(N) * 100);
+            fprintf('[%s] Writing CSV ... ~%.2f%% (i=%d/%d)\n', mfilename, pct, i, N);
+            lastPrint = tic;
+        end
     end
     fclose(fid);
 
-    fprintf('Wrote %d IMU records to %s\n', height(allRows), outFile);
+    fprintf('[%s] Writing CSV ... 100%% (done, %.2f s)\n', mfilename, toc(tWrite));
+    fprintf('Wrote %d IMU records to %s\n', N, outFile);
+
 end
 
 % =========================
@@ -90,36 +105,82 @@ function T = read_numeric_sensor(fname)
 % Robust numeric reader (ignores header lines automatically)
 % Accepts 9 columns (no bias) or 12 columns (with bias)
 %
-% Expected numeric columns:
-% [year month day hour minute second x y z biasx biasy biasz]
-% If bias columns are missing, they will be filled with 0.
+% Progress:
+%   Prints progress to command line every 2 seconds based on ftell/bytes.
+%   Also prints valid row count to confirm it is still running.
 
     fid = fopen(fname, 'r');
     assert(fid > 0, "Cannot open file: %s", fname);
 
-    rows = [];
-    while true
-        line = fgetl(fid);
-        if ~ischar(line), break; end
-        line = strtrim(line);
-        if line == "", continue; end
+    info = dir(fname);
+    totalBytes = max(1, info.bytes);
 
-        nums = sscanf(line, '%f');
-        if numel(nums) < 9
-            continue; % header/junk line
+    % ---------- Preallocation (key speedup) ----------
+    blockSize = 200000;           % adjust: 1e5~5e5
+    rows = zeros(blockSize, 12);
+    n = 0;
+
+    % ---------- Progress print config ----------
+    printIntervalSec = 2;
+    lastPrint = tic;
+
+    fprintf('[%s] Reading %s ...\n', mfilename, fname);
+
+    try
+        while true
+            line = fgetl(fid);
+            if ~ischar(line), break; end
+
+            line = strtrim(line);
+            if isempty(line), continue; end
+
+            % Fast skip for obvious header lines
+            c = line(1);
+            if ~((c >= '0' && c <= '9') || c == '-' || c == '.')
+                continue;
+            end
+
+            nums = sscanf(line, '%f');
+            if numel(nums) < 9
+                continue;
+            end
+
+            % Normalize to 12 columns
+            if numel(nums) >= 12
+                nums = nums(1:12);
+            else
+                nums = [nums(1:9); 0; 0; 0];
+            end
+
+            % Store (preallocated)
+            n = n + 1;
+            if n > size(rows,1)
+                rows(end+1:end+blockSize, :) = 0; %#ok<AGROW>
+            end
+            rows(n, :) = nums(:).';
+
+            % ----- Progress printing (every 2 seconds) -----
+            if toc(lastPrint) >= printIntervalSec
+                curBytes = ftell(fid);
+                pct = floor(double(curBytes) / double(totalBytes) * 100);
+                pct = min(max(pct, 0), 100);
+                fprintf('[%s] Reading %s ... ~%d%% (valid rows=%d)\n', ...
+                    mfilename, fname, pct, n);
+                lastPrint = tic;
+            end
         end
-
-        if numel(nums) >= 12
-            nums = nums(1:12);
-        else
-            nums = [nums(1:9); 0; 0; 0];
-        end
-
-        rows(end+1, :) = nums.'; %#ok<AGROW>
+    catch ME
+        fclose(fid);
+        rethrow(ME);
     end
+
     fclose(fid);
 
-    assert(~isempty(rows), "No valid numeric data found in: %s", fname);
+    fprintf('[%s] Reading %s ... 100%% (done, valid rows=%d)\n', mfilename, fname, n);
+
+    assert(n > 0, "No valid numeric data found in: %s", fname);
+
+    rows = rows(1:n, :);
 
     T = table;
     T.year   = rows(:,1);
@@ -135,6 +196,7 @@ function T = read_numeric_sensor(fname)
     T.biasy  = rows(:,11);
     T.biasz  = rows(:,12);
 end
+
 
 function utcMillis = to_utc_millis(T)
 % Convert (Y,M,D,h,m,sec) to UTC milliseconds since 1970-01-01

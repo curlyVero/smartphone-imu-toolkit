@@ -50,7 +50,7 @@ CORR_THRESHOLD = 0.5          # Threshold to switch between Correlation and Acc 
 # ===============================================
 
 # Consistent with mounting_Analysis.m
-GRAVITY_MAG = 9.7803267715  # m/s^2
+GRAVITY_MAG = 9.80665  # m/s^2
 
 
 def dcm_from_euler_xyz(roll: float, pitch: float, yaw: float) -> np.ndarray:
@@ -155,7 +155,7 @@ def estimate_mounting_angles(acc_b: np.ndarray, gyro_b: np.ndarray):
     # --- 2) Roll/Pitch optimization ---
     def cost_rp(x: np.ndarray) -> float:
         roll, pitch = float(x[0]), float(x[1])
-        R = dcm_from_euler_xyz(roll, pitch, 0.0)
+        R = dcm_from_euler_xyz(roll, -pitch, 0.0)
         e = (R @ static_mean.reshape(3,)) - target_g
         return float(np.dot(e, e))
 
@@ -174,7 +174,7 @@ def estimate_mounting_angles(acc_b: np.ndarray, gyro_b: np.ndarray):
     best_pitch = float(res.x[1])
     rp_residual = float(res.fun) # Accuracy metric for RP
 
-    R_level = dcm_from_euler_xyz(best_roll, best_pitch, 0.0)
+    R_level = dcm_from_euler_xyz(best_roll, -best_pitch, 0.0)
 
     # --- 3) Rotate all data to level frame ---
     acc_level = (R_level @ acc_b.T).T
